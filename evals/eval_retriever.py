@@ -11,7 +11,7 @@ from evals.harness import load_goldens, summarize_by_metric, print_summary
 load_dotenv()
 
 GOLDEN_PATH = "goldens/retriever_goldens.json"
-JUDGE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"   # NOTE: differs from the other evals (gpt-4o-mini)
+JUDGE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"   #
 THRESHOLD = 0.7
 
 
