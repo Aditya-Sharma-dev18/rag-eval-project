@@ -7,13 +7,15 @@ from dotenv import load_dotenv
 from deepeval import evaluate
 from deepeval.test_case import LLMTestCase
 from deepeval.metrics import ContextualRecallMetric, ContextualPrecisionMetric
+from deepeval.models import OpenAIModel  # <-- Naya import add kiya
 from src.retriever import build_retriever
-
 
 load_dotenv()
 
-GOLDEN_PATH = "goldens/retriever_goldens.json"
-JUDGE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"   #
+# Path ko dynamic banaya taaki FileNotFoundError na aaye
+BASE_DIR = Path(__file__).resolve().parent.parent
+GOLDEN_PATH = BASE_DIR / "goldens" / "retriever_goldens.json"
+JUDGE_MODEL = "qwen2.5:0.5b"
 THRESHOLD = 0.7
 
 
@@ -54,8 +56,7 @@ def run(retriever):
     # 1. LOAD the golden set --- the fixed, human-authored truth
     goldens = load_goldens(GOLDEN_PATH)
 
-    # 2. RUN THE INJECTED RETRIEVER on each question to fill retrieval_context,
-    #    then build one test case per golden.
+    # 2. RUN THE INJECTED RETRIEVER on each question to fill retrieval_context
     test_cases = []
     for g in goldens:
         retrieved = retriever.invoke(g["query"])
@@ -70,25 +71,33 @@ def run(retriever):
             )
         )
 
-    # 3. THE METRICS --- recall (did we miss?) and precision (ranked well?)
+    # ---> YAHAN OLLAMA KO CONFIGURE KIYA <---
+    custom_judge = OpenAIModel(
+    model=JUDGE_MODEL,
+    base_url="http://localhost:11434/v1",
+    api_key="ollama"
+    )
+
+    # 3. THE METRICS --- pass the custom local judge
     metrics = [
-        ContextualRecallMetric(threshold=THRESHOLD, model=JUDGE_MODEL, include_reason=True),
-        ContextualPrecisionMetric(threshold=THRESHOLD, model=JUDGE_MODEL, include_reason=True),
+        ContextualRecallMetric(threshold=THRESHOLD, model=custom_judge, include_reason=True),
+        ContextualPrecisionMetric(threshold=THRESHOLD, model=custom_judge, include_reason=True),
     ]
 
-    # 4. EVALUATE --- every metric on every case, batched + parallel, printed report.
-    #    hyperparameters travel with the run so the report is tagged with the config.
+    # 4. EVALUATE --- every metric on every case
     result = evaluate(
         test_cases=test_cases,
         metrics=metrics,
+        run_async=False,  
+        max_concurrent=1,
         hyperparameters={
-            "retriever": "reranker",          # vs "reranked" when you swap it in
-            "embedding_model": "text-embedding-3-large",
-            "chunk_size": 1000,
-            "chunk_overlap": 150,
-            "top_k": 3,
+            "retriever": "base_retriever",
+            "embedding_model": "all-MiniLM-L6-v2",
+            "chunk_size": 750,
+            "chunk_overlap": 100,
+            "top_k": 5,
             "judge_model": JUDGE_MODEL,
-            "golden_set": GOLDEN_PATH,
+            "golden_set": str(GOLDEN_PATH),
         },
     )
     return summarize_by_metric(result)
