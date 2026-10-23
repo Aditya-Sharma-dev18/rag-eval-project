@@ -1,18 +1,53 @@
 # eval_retriever.py
+import json
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 from deepeval import evaluate
 from deepeval.test_case import LLMTestCase
 from deepeval.metrics import ContextualRecallMetric, ContextualPrecisionMetric
+from src.retriever import build_retriever
 
-from src.reranker import RerankingRetriever
-from evals.harness import load_goldens, summarize_by_metric, print_summary
 
 load_dotenv()
 
 GOLDEN_PATH = "goldens/retriever_goldens.json"
 JUDGE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"   #
 THRESHOLD = 0.7
+
+
+def load_goldens(path):
+    """Load the human-authored golden cases from a JSON file."""
+    with Path(path).open(encoding="utf-8") as file:
+        goldens = json.load(file)
+    if not isinstance(goldens, list):
+        raise ValueError(f"Expected a list of goldens in {path}")
+    return goldens
+
+
+def summarize_by_metric(result):
+    """Return the average score for each metric in an evaluation result."""
+    scores = {}
+    for test_result in getattr(result, "test_results", []):
+        for metric in getattr(test_result, "metrics_data", []):
+            score = getattr(metric, "score", None)
+            name = getattr(metric, "name", None)
+            if name is not None and score is not None:
+                scores.setdefault(name, []).append(score)
+    return {
+        name: sum(metric_scores) / len(metric_scores)
+        for name, metric_scores in scores.items()
+    }
+
+
+def print_summary(name, summary):
+    print(f"{name} evaluation summary:")
+    if not summary:
+        print("No metric scores available.")
+        return
+    for metric, score in summary.items():
+        print(f"  {metric}: {score:.3f}")
 
 
 def run(retriever):
@@ -61,7 +96,7 @@ def run(retriever):
 
 def run_local():
     """Standalone convenience: build the retriever, then run."""
-    return run(RerankingRetriever())
+    return run(build_retriever())
 
 
 if __name__ == "__main__":
